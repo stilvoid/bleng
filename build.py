@@ -8,19 +8,15 @@ import subprocess
 import sys
 import time
 
-SITES = ("offend.me.uk", "engledow.me")
-DEFAULT_SITE = "offend.me.uk"
-
-CONTENT_DIR = os.path.abspath("./content")
-DIST_DIR = os.path.abspath("./dist")
-
-STATIC_TAGS = [
-    "stilvoid",
-    "offend",
-    "technology",
-    "linux",
-    "code",
-]
+config = {
+    "root": "http://example.com",
+    "source_dir": "./content",
+    "target_dir": "./www",
+    "template_dir": "./templates",
+    "default_template": "default",
+    "templates": {},
+    "tags": [],
+}
 
 now = str(int(time.time()))
 
@@ -40,13 +36,12 @@ def load_article(article):
         article["tags"] = article["path"].split("/")[:-1]
 
     # Default - override later
-    article["sites"] = [DEFAULT_SITE]
     article["timestamp"] = now
 
     if not article["content"]:
         return
 
-    filename = os.path.join(CONTENT_DIR, article["content"])
+    filename = os.path.join(config["source_dir"], article["content"])
     with open(filename, "r") as content_file:
         content = content_file.read().strip()
 
@@ -72,9 +67,6 @@ def load_article(article):
 
     article["tags"] += headers.get("tags", [])
 
-    if "site" in headers:
-        article["sites"] += headers["site"]
-
     article["timestamp"] = headers["timestamp"][0]
 
     title, content = content.split("\n", 1)
@@ -86,13 +78,14 @@ def main():
 
     pages = {}
     dirs = {}
-    for path, _, files in os.walk(CONTENT_DIR):
-        path = os.path.relpath(path, CONTENT_DIR)
+    for path, _, files in os.walk(config["source_dir"]):
+        path = os.path.relpath(path, config["source_dir"])
 
         if path == ".":
             path = ""
 
         pages[path] = {
+            "root": config["root"],
             "path": path,
             "content": os.path.join(path, "index.md") if "index.md" in files else None,
             "hidden": ".hidden" in files or pages.get(os.path.dirname(path), {}).get("hidden") == True,
@@ -133,73 +126,76 @@ def main():
     articles = sorted(pages.keys(), key=lambda path: pages[path]["timestamp"] + path, reverse=True)
 
     # Clear out the dist dir
-    for r, d, f in os.walk(DIST_DIR, topdown=False):
+    for r, d, f in os.walk(config["target_dir"], topdown=False):
         for name in f:
             os.remove(os.path.join(r, name))
         for name in d:
             os.rmdir(os.path.join(r, name))
 
     # Build the content
-    for site in SITES:
-        # Build the pages
-        for path in sorted(pages.keys()):
-            # Let's ditch this at some point
-            check_path = "blog" if path == "" else path
+    # Build the pages
+    for path in sorted(pages.keys()):
+        # Let's ditch this at some point
+        check_path = "blog" if path == "" else path
 
-            other_articles = [
-                pages[a] for a in articles
-                if site in pages[a]["sites"]
-                if pages[a]["path"].startswith("{}/".format(check_path))
-                if pages[a]["path"] != path
-                if pages[a]["content"]
-                if not pages[a]["is_index"]
-                if not pages[a]["hidden"] or os.path.dirname(a) == check_path
-            ]
+        other_articles = [
+            pages[a] for a in articles
+            if pages[a]["path"].startswith("{}/".format(check_path))
+            if pages[a]["path"] != path
+            if pages[a]["content"]
+            if not pages[a]["is_index"]
+            if not pages[a]["hidden"] or os.path.dirname(a) == check_path
+        ]
 
-            blurb = pages[path]
+        blurb = pages[path]
 
-            if not blurb["content"] or site not in blurb["sites"]:
-                blurb = None
+        if not blurb["content"]:
+            blurb = None
 
-            if blurb and not other_articles:
-                other_articles = [blurb]
-                blurb = None
+        if blurb and not other_articles:
+            other_articles = [blurb]
+            blurb = None
 
-            if not blurb and not other_articles:
-                continue
+        if not blurb and not other_articles:
+            continue
 
-            article = blurb or other_articles[0]
+        article = blurb or other_articles[0]
 
-            data = {
-                "url": path.lower().split(os.path.sep) if path else [],
-                "title": article["title"],
-                "tags": sorted(set(article["tags"] + STATIC_TAGS)),
-                "blurb": blurb,
-                "articles": other_articles,
-                "dirs": dirs,
-            }
+        data = {
+            "url": path.lower().split(os.path.sep) if path else [],
+            "title": article["title"],
+            "tags": sorted(set(article["tags"] + config["tags"])),
+            "blurb": blurb,
+            "articles": other_articles,
+            "dirs": dirs,
+        }
 
-            # Create the folder
-            dist_path = os.path.join(DIST_DIR, site, path)
-            os.makedirs(dist_path)
+        # Create the folder
+        dist_path = os.path.join(config["target_dir"], path)
+        os.makedirs(dist_path)
 
-            # Write the page
-            with open(os.path.join(dist_path, "index.html"), "w") as f:
-                f.write(template("page.{}".format(site), data))
+        template_name = config["templates"].get(path, config["default_template"])
 
-            # RSS?
-            if (site == "offend.me.uk" and path == "blog") or path == "":
-                with open(os.path.join(dist_path, "rss.xml"), "w") as f:
-                    f.write(template("rss.{}".format(site), data))
+        # Write the page
+        with open(os.path.join(dist_path, "index.html"), "w") as f:
+            f.write(template(template_name, data))
 
-        # Create the site map
-        with open(os.path.join(DIST_DIR, site, "map.xml"), "w") as f:
-            f.write(template("map.{}".format(site), pages=sorted([
-                "{}/".format(path) if path else ""
-                for path in pages.keys()
-                if not pages[path]["hidden"]
-                if site in pages[path]["sites"]
-            ])))
+    # Write RSS
+    with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
+        public_articles = [
+            pages[a] for a in articles
+            if not pages[a]["hidden"]
+        ]
+
+        f.write(template("rss", root=config["root"], title=public_articles[0]["title"], articles=public_articles))
+
+    # Create the site map
+    with open(os.path.join(config["target_dir"], "map.xml"), "w") as f:
+        f.write(template("map", root=config["root"], pages=sorted([
+            "{}/".format(path) if path else ""
+            for path in pages.keys()
+            if not pages[path]["hidden"]
+        ])))
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"> 
     % for page in pages:
     <url>
-        <loc>https://offend.me.uk/{{page}}</loc> 
+        <loc>{{root}}/{{page}}</loc> 
     </url>
     % end
 </urlset>
