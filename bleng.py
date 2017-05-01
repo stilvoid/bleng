@@ -3,6 +3,7 @@
 from bottle import template
 from markdown import markdown
 import email
+import json
 import os
 import subprocess
 import sys
@@ -26,19 +27,19 @@ def load_article(article):
     """
 
     if article["path"] == "":
-        article["is_index"] = True
+        article["url"] = "/"
         article["tags"] = []
-    elif article["content"] and os.path.basename(article["content"]) == "index.md":
-        article["is_index"] = True
-        article["tags"] = article["path"].split("/")
     else:
-        article["is_index"] = False
+        article["url"] = "/{}/".format(article["path"])
         article["tags"] = article["path"].split("/")[:-1]
+
+    article["tags"] = list(set(article["tags"] + config["tags"]))
 
     # Default - override later
     article["timestamp"] = now
 
     if not article["content"]:
+        article["title"] = article["path"].split("/")[0]
         return
 
     filename = os.path.join(config["source_dir"], article["content"])
@@ -67,7 +68,7 @@ def load_article(article):
 
     article["tags"] += headers.get("tags", [])
 
-    article["timestamp"] = headers["timestamp"][0]
+    article["timestamp"] = headers.get("timestamp", [now])[0]
 
     title, content = content.split("\n", 1)
     article["title"] = title[2:]
@@ -75,6 +76,8 @@ def load_article(article):
 
 def main():
     # Build a picture of what's there
+
+    hidden_paths = []
 
     pages = {}
     dirs = {}
@@ -84,28 +87,30 @@ def main():
         if path == ".":
             path = ""
 
-        pages[path] = {
-            "root": config["root"],
-            "path": path,
-            "content": os.path.join(path, "index.md") if "index.md" in files else None,
-            "hidden": ".hidden" in files or pages.get(os.path.dirname(path), {}).get("hidden") == True,
-        }
+        if ".hidden" in files or os.path.dirname(path) in hidden_paths:
+            hidden_paths.append(path)
 
         for filename in files:
-            if filename not in ["index.md", ".hidden"]:
-                (filepath, _) = os.path.splitext(filename)
+            if filename == ".hidden":
+                continue
+
+            (filepath, _) = os.path.splitext(filename)
+
+            if filepath == "index":
+                filepath = path
+            else:
                 filepath = os.path.join(path, filepath)
 
-                pages[filepath] = {
-                    "path": filepath,
-                    "content": os.path.join(path, filename),
-                    "hidden": pages[path]["hidden"],
-                }
+            pages[filepath] = {
+                "path": filepath,
+                "content": os.path.join(path, filename),
+                "hidden": path in hidden_paths,
+            }
 
         if path == "":
             continue
 
-        if ".hidden" in files or pages[os.path.dirname(path)]["hidden"]:
+        if path in hidden_paths or os.path.dirname(path) in hidden_paths:
             continue
 
         current_dir = dirs
@@ -132,49 +137,29 @@ def main():
         for name in d:
             os.rmdir(os.path.join(r, name))
 
-    # Build the content
     # Build the pages
     for path in sorted(pages.keys()):
-        # Let's ditch this at some point
-        check_path = "blog" if path == "" else path
+        data = pages[path]
 
         other_articles = [
             pages[a] for a in articles
-            if pages[a]["path"].startswith("{}/".format(check_path))
+            if pages[a]["path"].startswith("{}/".format(path)) or path == ""
             if pages[a]["path"] != path
-            if pages[a]["content"]
-            if not pages[a]["is_index"]
-            if not pages[a]["hidden"] or os.path.dirname(a) == check_path
+            if not pages[a]["hidden"] or (data["hidden"] and pages[a]["path"].startswith(path))
         ]
 
-        blurb = pages[path]
-
-        if not blurb["content"]:
-            blurb = None
-
-        if blurb and not other_articles:
-            other_articles = [blurb]
-            blurb = None
-
-        if not blurb and not other_articles:
-            continue
-
-        article = blurb or other_articles[0]
-
-        data = {
-            "url": path.lower().split(os.path.sep) if path else [],
-            "title": article["title"],
-            "tags": sorted(set(article["tags"] + config["tags"])),
-            "blurb": blurb,
-            "articles": other_articles,
-            "dirs": dirs,
-        }
+        data["articles"] = other_articles
 
         # Create the folder
         dist_path = os.path.join(config["target_dir"], path)
-        os.makedirs(dist_path)
+        try:
+            os.makedirs(dist_path)
+        except:
+            pass
 
         template_name = config["templates"].get(path, config["default_template"])
+
+        print(json.dumps(data, indent=4))
 
         # Write the page
         with open(os.path.join(dist_path, "index.html"), "w") as f:

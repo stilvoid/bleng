@@ -1,9 +1,4 @@
 <%
-    # For the simplicity of this example template, we'll merge the blurb with the other articles
-    if blurb:
-        articles = [blurb] + articles
-    end
-
     # A convenience function for making dates pretty
     import datetime
     def format_date(article):
@@ -30,24 +25,42 @@
         {{json.dumps(articles, indent=4)}}
         </p>
 
-        % for article in articles:
-        <article id="blurb">
-            <h1>{{article["title"]}}</h1>
+        <main>
+            <h1>{{title}}</h1>
 
-            {{!article["content"]}}
-
+            % if content:
             <p>
-                <strong>Date:</strong>
-                <time>{{format_date(article)}}</time>
+                {{!content}}
             </p>
+            % end
 
             <p>
-                <strong>Tags:</strong>
-                % for tag in sorted(article["tags"]):
-                <span>{{tag}}</span>
+            % if tags:
+                % for tag in tags:
+                    <span>{{tag}}</span>
                 % end
+            % end
             </p>
-        </article>
-        % end
+        </main>
+
+        % if articles:
+        <nav>
+            % for article in articles:
+            <p>
+                <a href="{{article["url"]}}">
+                    {{article["title"]}}
+                    -
+                    <time>{{format_date(article)}}</time>
+                    % if article["tags"]:
+                    -
+                        % for tag in sorted(article["tags"]):
+                        <span>{{tag}}</span>
+                        % end
+                    % end
+                </a>
+            </p>
+            % end
+        </nav>
+        %end
 	</body>
 </html>
