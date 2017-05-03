@@ -1,8 +1,8 @@
 <%
     # A convenience function for making dates pretty
     import datetime
-    def format_date(article):
-        return datetime.datetime.utcfromtimestamp(int(article["timestamp"])).strftime("%Y-%m-%d")
+    def format_date(timestamp):
+        return datetime.datetime.utcfromtimestamp(int(timestamp)).strftime("%Y-%m-%d")
     end
 %>
 <!DOCTYPE html>
@@ -11,46 +11,45 @@
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="keywords" content="{{",".join(tags)}}" />
-        <meta name="description" content="{{title}}" />
+        <meta name="keywords" content="{{",".join(page["tags"])}}" />
+        <meta name="description" content="{{page["title"]}}" />
 
-		<title>{{title}}</title>
+		<title>{{page["title"]}}</title>
 	</head>
 
 	<body>
-        <p>
-        <%
-            import json
-        %>
-        {{json.dumps(articles, indent=4)}}
-        </p>
-
         <main>
-            <h1>{{title}}</h1>
+            <h1>{{page["title"]}}</h1>
 
-            % if content:
+            % if page["content"]:
             <p>
-                {{!content}}
+                {{!page["content"]}}
             </p>
             % end
 
             <p>
-            % if tags:
-                % for tag in tags:
+                <time>{{format_date(page["timestamp"])}}</time>
+                -
+                <a href="{{config["root"]}}{{page["url"]}}">Permalink</a>
+            </p>
+
+            <p>
+            % if page["tags"]:
+                % for tag in page["tags"]:
                     <span>{{tag}}</span>
                 % end
             % end
             </p>
         </main>
 
-        % if articles:
+        % if other_articles:
         <nav>
-            % for article in articles:
+            % for article in other_articles:
             <p>
                 <a href="{{article["url"]}}">
                     {{article["title"]}}
                     -
-                    <time>{{format_date(article)}}</time>
+                    <time>{{format_date(article["timestamp"])}}</time>
                     % if article["tags"]:
                     -
                         % for tag in sorted(article["tags"]):

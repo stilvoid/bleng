@@ -10,7 +10,7 @@ import sys
 import time
 
 config = {
-    "root": "http://example.com",
+    "root": "https://example.com",
     "source_dir": "./content",
     "target_dir": "./www",
     "template_dir": "./templates",
@@ -38,8 +38,10 @@ def load_article(article):
     # Default - override later
     article["timestamp"] = now
 
+    # No content to load
     if not article["content"]:
-        article["title"] = article["path"].split("/")[0]
+        article["title"] = article["path"].split("/")[-1]
+        article["title"] = article["title"][0].upper() + article["title"][1:]
         return
 
     filename = os.path.join(config["source_dir"], article["content"])
@@ -78,9 +80,9 @@ def main():
     # Build a picture of what's there
 
     hidden_paths = []
-
     pages = {}
     dirs = {}
+
     for path, _, files in os.walk(config["source_dir"]):
         path = os.path.relpath(path, config["source_dir"])
 
@@ -89,11 +91,10 @@ def main():
 
         if ".hidden" in files or os.path.dirname(path) in hidden_paths:
             hidden_paths.append(path)
+            if ".hidden" in files:
+                files.remove(".hidden")
 
         for filename in files:
-            if filename == ".hidden":
-                continue
-
             (filepath, _) = os.path.splitext(filename)
 
             if filepath == "index":
@@ -105,6 +106,16 @@ def main():
                 "path": filepath,
                 "content": os.path.join(path, filename),
                 "hidden": path in hidden_paths,
+                "is_index": filepath == path,
+            }
+
+        # Create an index if there isn't one
+        if path not in pages:
+            pages[path] = {
+                "path": path,
+                "content": None,
+                "hidden": path in hidden_paths,
+                "is_index": True,
             }
 
         if path == "":
@@ -113,6 +124,7 @@ def main():
         if path in hidden_paths or os.path.dirname(path) in hidden_paths:
             continue
 
+        # Build the directory map
         current_dir = dirs
         for part in path.split("/"):
             if part not in current_dir:
@@ -121,7 +133,7 @@ def main():
 
     # Load all the articles in
     for i, path in enumerate(pages.keys()):
-        percent = int(i / len(pages) * 101)
+        percent = int((i + 1) / len(pages) * 100)
         prog = int(percent / 2)
 
         print("[{}{}] {}%".format("=" * prog, " " * (50 - prog), percent), end="\r")
@@ -139,16 +151,15 @@ def main():
 
     # Build the pages
     for path in sorted(pages.keys()):
-        data = pages[path]
+        article = pages[path]
 
         other_articles = [
             pages[a] for a in articles
+            if not pages[a]["is_index"]
             if pages[a]["path"].startswith("{}/".format(path)) or path == ""
             if pages[a]["path"] != path
-            if not pages[a]["hidden"] or (data["hidden"] and pages[a]["path"].startswith(path))
+            if not pages[a]["hidden"] or (article["hidden"] and pages[a]["path"].startswith(path))
         ]
-
-        data["articles"] = other_articles
 
         # Create the folder
         dist_path = os.path.join(config["target_dir"], path)
@@ -159,17 +170,21 @@ def main():
 
         template_name = config["templates"].get(path, config["default_template"])
 
-        print(json.dumps(data, indent=4))
-
         # Write the page
         with open(os.path.join(dist_path, "index.html"), "w") as f:
-            f.write(template(template_name, data))
+            f.write(template(template_name, {
+                "dirs": dirs,
+                "config": config,
+                "page": article,
+                "other_articles": other_articles,
+            }))
 
     # Write RSS
     with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
         public_articles = [
             pages[a] for a in articles
             if not pages[a]["hidden"]
+            if not pages[a]["is_index"]
         ]
 
         f.write(template("rss", root=config["root"], title=public_articles[0]["title"], articles=public_articles))
