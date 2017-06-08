@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+SUPPORTED_EXTENSIONS = (".markdown", ".mdown", ".mdwn", ".mkdn", ".mkd", ".md", ".txt")
+
 config = {
     "root": "https://example.com",
     "source_dir": "./content",
@@ -41,7 +43,11 @@ def load_article(article):
     # No content to load
     if not article["content"]:
         article["title"] = article["path"].split("/")[-1]
-        article["title"] = article["title"][0].upper() + article["title"][1:]
+        if not article["title"]:
+            article["title"] = "Untitled"
+        else:
+            article["title"] = article["title"][0].upper() + article["title"][1:]
+
         return
 
     filename = os.path.join(config["source_dir"], article["content"])
@@ -95,7 +101,10 @@ def main():
                 files.remove(".hidden")
 
         for filename in files:
-            (filepath, _) = os.path.splitext(filename)
+            (filepath, ext) = os.path.splitext(filename)
+
+            if ext not in SUPPORTED_EXTENSIONS:
+                continue
 
             if filepath == "index":
                 filepath = path
@@ -156,7 +165,7 @@ def main():
         other_articles = [
             pages[a] for a in articles
             if not pages[a]["is_index"]
-            if pages[a]["path"].startswith("{}/".format(path)) or path == ""
+            #if pages[a]["path"].startswith("{}/".format(path)) or path == ""
             if pages[a]["path"] != path
             if not pages[a]["hidden"] or (article["hidden"] and pages[a]["path"].startswith(path))
         ]
