@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
 from bottle import template
+from markdown.preprocessors import Preprocessor
 from markdown import markdown
 import email
 import json
+from markdown.extensions import Extension
 import os
+import re
 import subprocess
 import sys
 import time
@@ -22,6 +25,17 @@ config = {
 }
 
 now = str(int(time.time()))
+
+class HeaderBumpPreprocessor(Preprocessor):
+    def run(self, lines):
+        return [
+            re.sub(r"^(\s*#)", r"\1#", line)
+            for line in lines
+        ]
+
+class HeaderBumpExtension(Extension):
+    def extendMarkdown(self, md, md_globals):
+        md.preprocessors["headerbump"] = HeaderBumpPreprocessor(md)
 
 def load_article(article):
     """
@@ -80,7 +94,11 @@ def load_article(article):
 
     title, content = content.split("\n", 1)
     article["title"] = title[2:]
-    article["content"] = markdown(content, output_format="html5")
+    article["content"] = markdown(
+        content,
+        output_format="html5",
+        extensions=[HeaderBumpExtension()]
+    )
 
 def main():
     # Build a picture of what's there
