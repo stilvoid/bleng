@@ -42,26 +42,39 @@ def load_article(article):
     Load an article
     """
 
+    split_path = article["path"].split("/")
+
+    # Default - override later
+    article["timestamp"] = now
+    article["is_index"] = False
+    article["file_path"] = article["content"]
+
+    if not article["content"] or os.path.splitext(os.path.basename(article["content"]))[0] == "index":
+        article["is_index"] = True
+
     if article["path"] == "":
         article["url"] = "/"
         article["tags"] = []
+        article["parent"] = None
     else:
         article["url"] = "/{}/".format(article["path"])
         article["tags"] = article["path"].split("/")[:-1]
 
+        if article["is_index"]:
+            if len(split_path) > 1:
+                article["parent"] = "/".join(split_path[:-1])
+            else:
+                article["parent"] = None
+        else:
+            if len(split_path) > 2:
+                article["parent"] = "/".join(split_path[:-2])
+            else:
+                article["parent"] = None
+
     article["tags"] = list(set(article["tags"] + config["tags"]))
 
-    # Default - override later
-    article["timestamp"] = now
-
-    # No content to load
     if not article["content"]:
-        article["title"] = article["path"].split("/")[-1]
-        if not article["title"]:
-            article["title"] = "Untitled"
-        else:
-            article["title"] = article["title"][0].upper() + article["title"][1:]
-
+        article["title"] = split_path[-1]
         return
 
     filename = os.path.join(config["source_dir"], article["content"])
@@ -113,10 +126,16 @@ def main():
         if path == ".":
             path = ""
 
-        if ".hidden" in files or os.path.dirname(path) in hidden_paths:
+        dir_config = {}
+
+        if "config.json" in files:
+            with open(os.path.join(config["source_dir"], path, "config.json")) as f:
+                dir_config = json.load(f)
+
+            files.remove("config.json")
+
+        if dir_config.get("hidden") or os.path.dirname(path) in hidden_paths:
             hidden_paths.append(path)
-            if ".hidden" in files:
-                files.remove(".hidden")
 
         for filename in files:
             (filepath, ext) = os.path.splitext(filename)
@@ -133,8 +152,9 @@ def main():
                 "path": filepath,
                 "content": os.path.join(path, filename),
                 "hidden": path in hidden_paths,
-                "is_index": filepath == path,
             }
+            
+            pages[filepath].update(dir_config)
 
         # Create an index if there isn't one
         if path not in pages:
@@ -142,8 +162,9 @@ def main():
                 "path": path,
                 "content": None,
                 "hidden": path in hidden_paths,
-                "is_index": True,
             }
+
+            pages[path].update(dir_config)
 
         if path == "":
             continue
@@ -167,8 +188,6 @@ def main():
         load_article(pages[path])
     print()
 
-    articles = sorted(pages.keys(), key=lambda path: pages[path]["timestamp"] + path, reverse=True)
-
     # Clear out the dist dir
     for r, d, f in os.walk(config["target_dir"], topdown=False):
         for name in f:
@@ -180,13 +199,15 @@ def main():
     for path in sorted(pages.keys()):
         article = pages[path]
 
-        other_articles = [
-            pages[a] for a in articles
-            if not pages[a]["is_index"]
-            #if pages[a]["path"].startswith("{}/".format(path)) or path == ""
-            if pages[a]["path"] != path
-            if not pages[a]["hidden"] or (article["hidden"] and pages[a]["path"].startswith(path))
+        articles = [
+            page for page in pages.values()
+            if not page["hidden"] or article["hidden"]
         ]
+
+        if article.get("sort") == "timestamp":
+            articles = sorted(articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
+        else:
+            articles = sorted(articles, key=lambda a: a["title"])
 
         # Create the folder
         dist_path = os.path.join(config["target_dir"], path)
@@ -203,16 +224,21 @@ def main():
                 "dirs": dirs,
                 "config": config,
                 "page": article,
-                "other_articles": other_articles,
+                "articles": articles,
             }))
 
     # Write RSS
     with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
         public_articles = [
-            pages[a] for a in articles
-            if not pages[a]["hidden"]
-            if not pages[a]["is_index"]
+            page for page in pages.values()
+            if not page["hidden"]
+            if not page["is_index"]
+            if page["path"].startswith("blog/")
         ]
+
+        public_articles = sorted(public_articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
+
+        public_articles = public_articles[:10]
 
         f.write(template("rss", root=config["root"], title=public_articles[0]["title"], articles=public_articles))
 
