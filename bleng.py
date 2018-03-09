@@ -26,17 +26,6 @@ config = {
 
 now = str(int(time.time()))
 
-class HeaderBumpPreprocessor(Preprocessor):
-    def run(self, lines):
-        return [
-            re.sub(r"^(\s*#)", r"\1#", line)
-            for line in lines
-        ]
-
-class HeaderBumpExtension(Extension):
-    def extendMarkdown(self, md, md_globals):
-        md.preprocessors["headerbump"] = HeaderBumpPreprocessor(md)
-
 def load_article(article):
     """
     Load an article
@@ -110,7 +99,6 @@ def load_article(article):
     article["content"] = markdown(
         content,
         output_format="html5",
-        extensions=[HeaderBumpExtension()]
     )
 
 def main():
