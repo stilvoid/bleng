@@ -47,7 +47,11 @@ def load_article(article):
         article["parent"] = None
     else:
         article["url"] = "/{}/".format(article["path"])
-        article["tags"] = article["path"].split("/")[:-1]
+        article["tags"] = [
+            tag.replace("-", " ")
+            for tag
+            in article["path"].split("/")[:-1]
+        ]
 
         if article["is_index"]:
             if len(split_path) > 1:
@@ -193,7 +197,7 @@ def main():
         ]
 
         if article.get("sort") == "timestamp":
-            articles = sorted(articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
+            articles = sorted(articles, key=lambda a: [int(a["timestamp"]), a["path"]], reverse=True)
         else:
             articles = sorted(articles, key=lambda a: a["title"])
 
@@ -216,27 +220,29 @@ def main():
             }))
 
     # Write RSS
-    with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
-        public_articles = [
-            page for page in pages.values()
-            if not page["hidden"]
-            if not page["is_index"]
-            if page["path"].startswith("blog/")
-        ]
+    if "rss" in config["templates"]:
+        with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
+            public_articles = [
+                page for page in pages.values()
+                if not page["hidden"]
+                if not page["is_index"]
+                if page["path"].startswith("blog/")
+            ]
 
-        public_articles = sorted(public_articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
+            public_articles = sorted(public_articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
 
-        public_articles = public_articles[:10]
+            public_articles = public_articles[:10]
 
-        f.write(template("rss", root=config["root"], title=public_articles[0]["title"], articles=public_articles))
+            f.write(template("rss", root=config["root"], title=public_articles[0]["title"] if public_articles else "", articles=public_articles))
 
     # Create the site map
-    with open(os.path.join(config["target_dir"], "map.xml"), "w") as f:
-        f.write(template("map", root=config["root"], pages=sorted([
-            "{}/".format(path) if path else ""
-            for path in pages.keys()
-            if not pages[path]["hidden"]
-        ])))
+    if "map" in config["templates"]:
+        with open(os.path.join(config["target_dir"], "map.xml"), "w") as f:
+            f.write(template("map", root=config["root"], pages=sorted([
+                "{}/".format(path) if path else ""
+                for path in pages.keys()
+                if not pages[path]["hidden"]
+            ])))
 
 if __name__ == "__main__":
     main()
