@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from bottle import template
+from bottle import template, TemplateError
 from markdown.preprocessors import Preprocessor
 from markdown import markdown
 import email
@@ -18,9 +18,7 @@ config = {
     "root": "https://example.com",
     "source_dir": "./content",
     "target_dir": "./www",
-    "template_dir": "./templates",
     "default_template": "default",
-    "templates": {},
     "tags": [],
 }
 
@@ -208,11 +206,9 @@ def main():
         except:
             pass
 
-        template_name = config["templates"].get(path, config["default_template"])
-
         # Write the page
         with open(os.path.join(dist_path, "index.html"), "w") as f:
-            f.write(template(template_name, {
+            f.write(template("default", {
                 "dirs": dirs,
                 "config": config,
                 "page": article,
@@ -220,29 +216,33 @@ def main():
             }))
 
     # Write RSS
-    if "rss" in config["templates"]:
-        with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
-            public_articles = [
-                page for page in pages.values()
-                if not page["hidden"]
-                if not page["is_index"]
-                if page["path"].startswith("blog/")
-            ]
+    public_articles = [
+        page for page in pages.values()
+        if not page["hidden"]
+        if not page["is_index"]
+        if page["path"].startswith("blog/")
+    ]
 
-            public_articles = sorted(public_articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
+    public_articles = sorted(public_articles, key=lambda a: a["timestamp"] + a["path"], reverse=True)
 
-            public_articles = public_articles[:10]
+    public_articles = public_articles[:10]
 
+    with open(os.path.join(config["target_dir"], "rss.xml"), "w") as f:
+        try:
             f.write(template("rss", root=config["root"], title=public_articles[0]["title"] if public_articles else "", articles=public_articles))
+        except TemplateError:
+            print("no rss template: skipping")
 
     # Create the site map
-    if "map" in config["templates"]:
-        with open(os.path.join(config["target_dir"], "map.xml"), "w") as f:
+    with open(os.path.join(config["target_dir"], "map.xml"), "w") as f:
+        try:
             f.write(template("map", root=config["root"], pages=sorted([
                 "{}/".format(path) if path else ""
                 for path in pages.keys()
                 if not pages[path]["hidden"]
             ])))
+        except TemplateError:
+            print("no map template: skipping")
 
 if __name__ == "__main__":
     main()
